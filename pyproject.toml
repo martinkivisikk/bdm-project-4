@@ -1,0 +1,34 @@
+[build-system]
+requires = ["setuptools>=72"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "rico"
+version = "0.1.0"
+requires-python = ">=3.11"
+dependencies = [
+    # Storage & DB
+    "psycopg[binary]>=3.1",
+    "pgvector>=0.3",
+    "boto3>=1.35",
+    # Ollama HTTP calls
+    "requests>=2.32",
+    # Shared data utilities
+    "numpy>=1.26",
+    "pillow>=10.4",
+]
+
+[project.optional-dependencies]
+# Install with:  pip install ".[ml]"
+# Required by:   embed_image.py (CLIP), embed_text.py (SBERT), extract.py (Ollama via requests)
+# Add to Dockerfile when embed_image, embed_text, extract, eval tasks are implemented.
+ml = [
+    "torch>=2.2",
+    "open-clip-torch>=2.26",
+    "sentence-transformers>=3.0",
+    "huggingface-hub>=0.24",
+    "datasets>=2.20",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
