@@ -25,7 +25,10 @@ CREATE TABLE IF NOT EXISTS pipeline_runs (
 -- ============================================================
 ALTER TABLE screens_metadata
     ADD COLUMN IF NOT EXISTS run_id              UUID REFERENCES pipeline_runs(run_id),
-    ADD COLUMN IF NOT EXISTS source_fingerprint  TEXT;
+    ADD COLUMN IF NOT EXISTS source_fingerprint  TEXT,
+    -- Output staging for the parse task. Written by parse, read by embed_text and extract
+    -- so those tasks stay independent and don't hit XCom size limits.
+    ADD COLUMN IF NOT EXISTS parsed_text         TEXT;
 
 ALTER TABLE screens_embeddings
     ADD COLUMN IF NOT EXISTS run_id              UUID REFERENCES pipeline_runs(run_id),
