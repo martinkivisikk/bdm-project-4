@@ -1,0 +1,18 @@
+.env
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+dist/
+build/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Docker / local data
+postgres-data/
+minio-data/
+ollama-data/
+airflow-logs/
