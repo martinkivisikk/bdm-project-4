@@ -16,18 +16,19 @@ dependencies = [
     # Shared data utilities
     "numpy>=1.26",
     "pillow>=10.4",
+    # HuggingFace dataset streaming (ingest task)
+    "huggingface-hub>=0.24",
+    "datasets>=2.20",
 ]
 
 [project.optional-dependencies]
 # Install with:  pip install ".[ml]"
-# Required by:   embed_image.py (CLIP), embed_text.py (SBERT), extract.py (Ollama via requests)
+# Required by:   embed_image.py (CLIP), embed_text.py (SBERT), eval.py
 # Add to Dockerfile when embed_image, embed_text, extract, eval tasks are implemented.
 ml = [
     "torch>=2.2",
     "open-clip-torch>=2.26",
     "sentence-transformers>=3.0",
-    "huggingface-hub>=0.24",
-    "datasets>=2.20",
 ]
 
 [tool.setuptools.packages.find]
