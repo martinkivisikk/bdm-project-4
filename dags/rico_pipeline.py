@@ -6,6 +6,10 @@ import logging
 from rico.traceability import setup_run_task, on_dag_success, on_dag_failure
 from rico.tasks.ingest import ingest_task
 from rico.tasks.parse import parse_task
+from rico.tasks.embed_image import embed_image_task
+from rico.tasks.embed_text import embed_text_task
+from rico.tasks.extract import extract_task
+from rico.tasks.load import load_task
 
 log = logging.getLogger(__name__)
 
@@ -31,10 +35,10 @@ with DAG(
     setup_run   = PythonOperator(task_id="setup_run",   python_callable=setup_run_task)
     ingest      = PythonOperator(task_id="ingest",      python_callable=ingest_task)
     parse       = PythonOperator(task_id="parse",       python_callable=parse_task)
-    embed_image = PythonOperator(task_id="embed_image", python_callable=_stub)
-    embed_text  = PythonOperator(task_id="embed_text",  python_callable=_stub)
-    extract     = PythonOperator(task_id="extract",     python_callable=_stub)
-    load        = PythonOperator(task_id="load",        python_callable=_stub)
+    embed_image = PythonOperator(task_id="embed_image", python_callable=embed_image_task)
+    embed_text  = PythonOperator(task_id="embed_text",  python_callable=embed_text_task)
+    extract     = PythonOperator(task_id="extract",     python_callable=extract_task)
+    load        = PythonOperator(task_id="load",        python_callable=load_task)
     audit       = PythonOperator(task_id="audit",       python_callable=_stub)
     evaluate    = PythonOperator(task_id="eval",        python_callable=_stub)
 
