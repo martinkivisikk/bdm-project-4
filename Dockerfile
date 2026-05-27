@@ -10,5 +10,5 @@ COPY --chown=airflow:root pyproject.toml /tmp/pyproject.toml
 RUN mkdir -p /tmp/rico/src/rico && \
     cp /tmp/pyproject.toml /tmp/rico/pyproject.toml && \
     touch /tmp/rico/src/rico/__init__.py && \
-    pip install --no-cache-dir /tmp/rico && \
+    pip install --no-cache-dir /tmp/rico[ml] && \
     rm -rf /tmp/rico /tmp/pyproject.toml
