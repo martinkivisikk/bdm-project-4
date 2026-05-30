@@ -10,6 +10,8 @@ from rico.tasks.embed_image import embed_image_task
 from rico.tasks.embed_text import embed_text_task
 from rico.tasks.extract import extract_task
 from rico.tasks.load import load_task
+from rico.tasks.audit import audit_task
+from rico.tasks.eval import eval_task
 
 log = logging.getLogger(__name__)
 
@@ -39,7 +41,7 @@ with DAG(
     embed_text  = PythonOperator(task_id="embed_text",  python_callable=embed_text_task)
     extract     = PythonOperator(task_id="extract",     python_callable=extract_task)
     load        = PythonOperator(task_id="load",        python_callable=load_task)
-    audit       = PythonOperator(task_id="audit",       python_callable=_stub)
-    evaluate    = PythonOperator(task_id="eval",        python_callable=_stub)
+    audit       = PythonOperator(task_id="audit",       python_callable=audit_task)
+    evaluate    = PythonOperator(task_id="eval",        python_callable=eval_task)
 
     setup_run >> ingest >> parse >> [embed_image, embed_text, extract] >> load >> audit >> evaluate

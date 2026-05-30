@@ -21,6 +21,11 @@ x-airflow-env: &airflow-env
   OLLAMA_BASE_URL: http://ollama:11434
   OLLAMA_MODEL: ${OLLAMA_MODEL:-qwen2.5:3b}
   SLACK_WEBHOOK_URL: ${SLACK_WEBHOOK_URL:-}
+  # ── Debug flags ─────────────────────────────
+  DEBUG_FORCE_AUDIT_FAIL: ${DEBUG_FORCE_AUDIT_FAIL:-false}
+  DEBUG_EVAL_SINGLE_SCREEN: ${DEBUG_EVAL_SINGLE_SCREEN:-false}
+  DEBUG_EVAL_ASSERT_SELF: ${DEBUG_EVAL_ASSERT_SELF:-false}
+  DEBUG_FORCE_EVAL_FAIL: ${DEBUG_FORCE_EVAL_FAIL:-false}
 
 x-airflow-volumes: &airflow-volumes
   - ./dags:/opt/airflow/dags:ro

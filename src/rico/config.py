@@ -30,3 +30,20 @@ CLIP_MODEL_PRETRAINED = "laion2b_s34b_b79k"   # → 512-dim vectors
 SBERT_MODEL_NAME      = "sentence-transformers/all-MiniLM-L6-v2"  # → 384-dim
 
 PROMPT_VERSION = "v1"
+
+# ── Debug flags ─────────────────────────────────────────────────────────────
+DEBUG_FORCE_AUDIT_FAIL = os.getenv("DEBUG_FORCE_AUDIT_FAIL", "false").lower() in (
+    "1", "true", "yes", "y", "t"
+)
+
+DEBUG_EVAL_SINGLE_SCREEN = os.getenv("DEBUG_EVAL_SINGLE_SCREEN", "false").lower() in (
+    "1", "true", "yes", "y", "t"
+)
+
+DEBUG_EVAL_ASSERT_SELF = os.getenv("DEBUG_EVAL_ASSERT_SELF", "false").lower() in (
+    "1", "true", "yes", "y", "t"
+)
+
+DEBUG_FORCE_EVAL_FAIL = os.getenv("DEBUG_FORCE_EVAL_FAIL", "false").lower() in (
+    "1", "true", "yes", "y", "t"
+)
