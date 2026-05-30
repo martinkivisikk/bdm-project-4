@@ -20,6 +20,7 @@ import uuid
 import psycopg
 
 from rico import config
+from rico.notifications import notify_run_finished, notify_run_started
 
 log = logging.getLogger(__name__)
 
@@ -48,6 +49,41 @@ def _get_run_id_for_dag_run(dag_run_id: str) -> str | None:
             (dag_run_id,),
         ).fetchone()
     return str(row[0]) if row else None
+
+
+def _get_run_finish_info(run_id: str) -> tuple[str, float | None]:
+    """Return final status and duration seconds for a pipeline run."""
+    with psycopg.connect(config.POSTGRES_DSN) as conn:
+        row = conn.execute(
+            """
+            SELECT
+                status,
+                EXTRACT(EPOCH FROM (COALESCE(ended_at, NOW()) - started_at)) AS duration_seconds
+            FROM pipeline_runs
+            WHERE run_id = %s
+            """,
+            (run_id,),
+        ).fetchone()
+
+    if not row:
+        return "failed", None
+
+    return str(row[0]), float(row[1]) if row[1] is not None else None
+
+
+def _trigger_type(context) -> str:
+    """Map Airflow DAG run metadata to manual/scheduled wording."""
+    dag_run = context.get("dag_run")
+    run_type = str(getattr(dag_run, "run_type", "") or "").lower()
+
+    if run_type == "scheduled":
+        return "scheduled"
+    if run_type == "manual":
+        return "manual"
+    if getattr(dag_run, "external_trigger", False):
+        return "manual"
+
+    return "scheduled"
 
 
 # Core DB operations 
@@ -103,6 +139,8 @@ def setup_run_task(**context) -> str:
     limit_param = context["params"].get("LIMIT", 5)
     run_id = create_run(dag_run_id, limit_param)
     context["ti"].xcom_push(key="run_id", value=run_id)
+
+    notify_run_started(run_id, int(limit_param), _trigger_type(context))
     return run_id
 
 
@@ -112,6 +150,10 @@ def on_dag_success(context) -> None:
     run_id = _get_run_id_for_dag_run(dag_run_id)
     if run_id:
         finish_run(run_id, "succeeded")
+        status, duration_sec = _get_run_finish_info(run_id)
+
+        # issue #7 can later replace it
+        notify_run_finished(run_id, status, duration_sec, "pipeline completed")
 
 
 def on_dag_failure(context) -> None:
@@ -134,3 +176,16 @@ def on_dag_failure(context) -> None:
             (run_id,),
         )
     log.info("Pipeline run %s marked failed (if still running)", run_id)
+
+    status, duration_sec = _get_run_finish_info(run_id)
+
+    task_instance = context.get("task_instance")
+    failed_task_id = getattr(task_instance, "task_id", "unknown")
+
+    summary = (
+        "audit circuit breaker halted pipeline"
+        if status == "paused-by-audit"
+        else f"task={failed_task_id}"
+    )
+
+    notify_run_finished(run_id, status, duration_sec, summary)
