@@ -1,9 +1,11 @@
 import logging
+import time
 
 import numpy as np
 from pgvector.psycopg import register_vector
 
 from rico import config
+from rico.observability import record_metric
 from rico.utils import get_postgres_conn
 
 log = logging.getLogger(__name__)
@@ -26,6 +28,7 @@ def embed_text_task(**context) -> None:
     from sentence_transformers import SentenceTransformer
 
     run_id = context["ti"].xcom_pull(task_ids="setup_run", key="run_id")
+    t0 = time.time()
 
     model = SentenceTransformer(config.SBERT_MODEL_NAME)
     log.info("SBERT loaded: %s", config.SBERT_MODEL_NAME)
@@ -61,4 +64,5 @@ def embed_text_task(**context) -> None:
                 )
         conn.commit()
 
+    record_metric(run_id, "embed_text_seconds", time.time() - t0)
     log.info("[%s] embed_text complete: %d vectors", run_id, len(screens))

@@ -1,8 +1,9 @@
 import json
 import logging
+import time
 
-from rico.utils import get_postgres_conn
 from rico.observability import record_metrics
+from rico.utils import get_postgres_conn
 
 log = logging.getLogger(__name__)
 
@@ -22,6 +23,7 @@ def _pct(numerator: int, denominator: int) -> float:
 
 def load_task(**context) -> None:
     run_id = context["ti"].xcom_pull(task_ids="setup_run", key="run_id")
+    t0 = time.time()
 
     extraction_results: dict = (
         context["ti"].xcom_pull(task_ids="extract", key="extraction_results") or {}
@@ -87,6 +89,7 @@ def load_task(**context) -> None:
 
 
     metrics = [
+        ("load_seconds", time.time() - t0, None),
         ("screens_ingested", float(total), None),
         ("screens_extracted", float(has_payload), None),
         ("pct_extraction_non_null", _pct(has_payload, total), None),

@@ -1,9 +1,10 @@
 import logging
-import random
+import time
 
 from sentence_transformers import SentenceTransformer
 
 from rico import config
+from rico.observability import record_metric
 from rico.utils import get_postgres_conn
 
 log = logging.getLogger(__name__)
@@ -21,6 +22,7 @@ VALUES (%s, %s, %s)
 
 def eval_task(**context) -> None:
     run_id = context["ti"].xcom_pull(task_ids="setup_run", key="run_id")
+    t0 = time.time()
 
     model = SentenceTransformer(config.SBERT_MODEL_NAME)
 
@@ -122,6 +124,8 @@ def eval_task(**context) -> None:
 
         conn.commit()
 
+    record_metric(run_id, "eval_seconds", time.time() - t0)
+    record_metric(run_id, "recall_at_5", recall_at_5)
     log.info(
         "[%s] eval complete: hits=%d queries=%d recall@5=%.4f",
         run_id,

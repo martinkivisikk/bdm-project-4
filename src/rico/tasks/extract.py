@@ -1,9 +1,11 @@
 import json
 import logging
+import time
 
 import requests
 
 from rico import config
+from rico.observability import record_metric
 from rico.utils import get_postgres_conn
 
 log = logging.getLogger(__name__)
@@ -47,6 +49,7 @@ def _call_ollama(text: str) -> dict:
 def extract_task(**context) -> None:
     run_id = context["ti"].xcom_pull(task_ids="setup_run", key="run_id")
 
+    t0 = time.time()
     results: dict[str, dict] = {}  # str(screen_id) → {payload, prompt_version, confidence}
     succeeded = 0
     failed = 0
@@ -95,6 +98,8 @@ def extract_task(**context) -> None:
         conn.commit()
 
     context["ti"].xcom_push(key="extraction_results", value=results)
+    record_metric(run_id, "extract_seconds", time.time() - t0)
+    record_metric(run_id, "screens_review_queued", failed)
     log.info(
         "[%s] extract complete: %d succeeded  %d failed → review_queue",
         run_id, succeeded, failed,

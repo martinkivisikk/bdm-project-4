@@ -1,7 +1,9 @@
 import json
 import logging
+import time
 
 from rico import config
+from rico.observability import record_metric
 from rico.utils import get_postgres_conn, get_s3_client
 
 log = logging.getLogger(__name__)
@@ -43,6 +45,7 @@ def _text_representation(elements: list[tuple[str, str, tuple[int, int, int, int
 
 def parse_task(**context) -> None:
     run_id = context["ti"].xcom_pull(task_ids="setup_run", key="run_id")
+    t0 = time.time()
 
     s3 = get_s3_client()
 
@@ -67,4 +70,6 @@ def parse_task(**context) -> None:
 
         conn.commit()
 
+    record_metric(run_id, "parse_seconds", time.time() - t0)
+    record_metric(run_id, "screens_parsed", count)
     log.info("parse complete: %d screens", count)

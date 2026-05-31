@@ -1,10 +1,12 @@
 import itertools
 import logging
+import time
 from io import BytesIO
 
 from datasets import load_dataset
 
 from rico import config
+from rico.observability import record_metric
 from rico.utils import compute_fingerprint, get_postgres_conn, get_s3_client
 
 log = logging.getLogger(__name__)
@@ -30,6 +32,7 @@ ON CONFLICT (screen_id) DO UPDATE SET
 def ingest_task(**context) -> None:
     run_id = context["ti"].xcom_pull(task_ids="setup_run", key="run_id")
     limit = context["params"].get("LIMIT", 5)
+    t0 = time.time()
 
     s3 = get_s3_client()
     ds = load_dataset(_DATASET, split="train", streaming=True)
@@ -62,4 +65,5 @@ def ingest_task(**context) -> None:
 
         conn.commit()
 
+    record_metric(run_id, "ingest_seconds", time.time() - t0)
     log.info("ingest complete: %d screens", limit)

@@ -1,10 +1,12 @@
 import logging
+import time
 from io import BytesIO
 
 import numpy as np
 from pgvector.psycopg import register_vector
 
 from rico import config
+from rico.observability import record_metric
 from rico.utils import get_postgres_conn, get_s3_client
 
 log = logging.getLogger(__name__)
@@ -31,6 +33,7 @@ def embed_image_task(**context) -> None:
     from PIL import Image
 
     run_id = context["ti"].xcom_pull(task_ids="setup_run", key="run_id")
+    t0 = time.time()
 
     model, _, preprocess = open_clip.create_model_and_transforms(
         config.CLIP_MODEL_NAME, pretrained=config.CLIP_MODEL_PRETRAINED
@@ -81,4 +84,5 @@ def embed_image_task(**context) -> None:
                 )
         conn.commit()
 
+    record_metric(run_id, "embed_image_seconds", time.time() - t0)
     log.info("[%s] embed_image complete: %d vectors", run_id, len(screens))

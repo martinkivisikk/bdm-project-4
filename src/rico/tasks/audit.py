@@ -1,9 +1,11 @@
 import json
 import logging
+import time
 
 from airflow.exceptions import AirflowFailException
 
 from rico import config
+from rico.observability import record_metric
 from rico.utils import get_postgres_conn
 
 log = logging.getLogger(__name__)
@@ -46,6 +48,7 @@ WHERE run_id = %s
 
 def audit_task(**context) -> None:
     run_id = context["ti"].xcom_pull(task_ids="setup_run", key="run_id")
+    t0 = time.time()
 
     with get_postgres_conn() as conn:
         with conn.cursor() as cur:
@@ -136,6 +139,7 @@ def audit_task(**context) -> None:
 
             conn.commit()
 
+            record_metric(run_id, "audit_seconds", time.time() - t0)
             raise AirflowFailException(
                 "Audit failed: duplicate rows detected"
             )
@@ -164,4 +168,5 @@ def audit_task(**context) -> None:
 
         conn.commit()
 
+    record_metric(run_id, "audit_seconds", time.time() - t0)
     log.info("[%s] audit passed", run_id)
