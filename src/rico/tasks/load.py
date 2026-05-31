@@ -8,12 +8,17 @@ from rico.utils import get_postgres_conn
 log = logging.getLogger(__name__)
 
 _UPSERT_EXTRACTION_SQL = """
-UPDATE screens_metadata
-SET extraction_payload = %s::jsonb,
-    prompt_version     = %s,
-    confidence         = %s,
+INSERT INTO screens_metadata (
+    screen_id, png_path, hierarchy_json_path,
+    extraction_payload, prompt_version, confidence, run_id, updated_at
+)
+VALUES (%s, '', '', %s::jsonb, %s, %s, %s, NOW())
+ON CONFLICT (screen_id) DO UPDATE SET
+    extraction_payload = EXCLUDED.extraction_payload,
+    prompt_version     = EXCLUDED.prompt_version,
+    confidence         = EXCLUDED.confidence,
+    run_id             = EXCLUDED.run_id,
     updated_at         = NOW()
-WHERE screen_id = %s AND run_id = %s
 """
 
 
@@ -34,10 +39,10 @@ def load_task(**context) -> None:
             cur.execute(
                 _UPSERT_EXTRACTION_SQL,
                 (
+                    int(screen_id_str),
                     json.dumps(result["payload"]),
                     result["prompt_version"],
                     result["confidence"],
-                    int(screen_id_str),
                     run_id,
                 ),
             )

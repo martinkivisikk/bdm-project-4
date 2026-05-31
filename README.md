@@ -51,7 +51,7 @@ make clean && make up && make pull-models
 
 ## Pipeline metrics
 
-After each successful run, `pipeline_metrics` holds one row per metric keyed by `run_id`. Query with:
+After each run, `pipeline_metrics` holds one row per metric keyed by `run_id`. Query with:
 
 ```sql
 SELECT metric_name, metric_value, details
@@ -64,34 +64,47 @@ ORDER BY metric_name;
 
 | `metric_name`           | Meaning                                                              |
 |-------------------------|----------------------------------------------------------------------|
-| `run_duration_s`        | Total wall-clock time for the DAG run in seconds                     |
-| `task_duration_s`       | Per-task duration; `details` contains `{"task_id": "..."}` to identify which task |
-| `retry_count`           | Number of task retries across the run                                |
-| `final_status`          | `1.0` = succeeded, `0.0` = failed / paused-by-audit                 |
+| `run_duration_seconds`  | Total wall-clock time for the DAG run in seconds                     |
+| `final_status`          | `1.0` = succeeded, `0.0` = failed / audit-failed                    |
+| `ingest_seconds`        | Wall-clock time for the ingest task                                  |
+| `parse_seconds`         | Wall-clock time for the parse task                                   |
+| `embed_image_seconds`   | Wall-clock time for the embed_image task                             |
+| `embed_text_seconds`    | Wall-clock time for the embed_text task                              |
+| `extract_seconds`       | Wall-clock time for the extract task                                 |
+| `load_seconds`          | Wall-clock time for the load task                                    |
+| `audit_seconds`         | Wall-clock time for the audit task                                   |
+| `eval_seconds`          | Wall-clock time for the eval task                                    |
 
 ### Data quality metrics
 
-| `metric_name`              | Meaning                                                           |
-|----------------------------|-------------------------------------------------------------------|
-| `screens_ingested`         | Rows inserted or updated in `screens_metadata`                    |
-| `screens_embedded_image`   | Rows inserted in `screens_embeddings` with `embedding_kind=image` |
-| `screens_embedded_text`    | Rows inserted in `screens_embeddings` with `embedding_kind=text`  |
-| `screens_extracted`        | Screens with a non-null `extraction_payload` after the extract task |
-| `screens_review_queue`     | Screens routed to `screens_review_queue` due to LLM parse failure |
-| `metadata_completeness`    | Fraction of ingested screens that have a non-null `extraction_payload` |
-| `confidence_mean`          | Mean extraction confidence across all processed screens           |
-| `confidence_p25` / `p75`   | 25th / 75th percentile of extraction confidence                   |
-| `zero_vectors_image`       | Count of all-zero image embedding vectors (indicates CLIP failure) |
-| `zero_vectors_text`        | Count of all-zero text embedding vectors (indicates SBERT failure) |
-| `distinct_apps`            | Number of distinct `app_package` values in the current batch      |
-| `distinct_categories`      | Number of distinct `category` values in the current batch         |
-| `recall_at_5`              | recall@5 from the eval task (higher is better; baseline ~0.6)     |
+| `metric_name`                    | Meaning                                                                    |
+|----------------------------------|----------------------------------------------------------------------------|
+| `screens_ingested`               | Rows in `screens_metadata` for this run                                    |
+| `screens_parsed`                 | Screens whose `parsed_text` was written by the parse task                  |
+| `screens_extracted`              | Screens with a non-null `extraction_payload` after load                    |
+| `screens_review_queued`          | Screens routed to `screens_review_queue` due to LLM parse failure          |
+| `load_rows_in`                   | Extraction results received by the load task from XCom                     |
+| `load_rows_out`                  | Rows actually written to `screens_metadata` by load                        |
+| `screens_embedded_image`         | Rows in `screens_embeddings` with `embedding_kind=image` for this run      |
+| `screens_embedded_text`          | Rows in `screens_embeddings` with `embedding_kind=text` for this run       |
+| `embeddings_count_image`         | Same as `screens_embedded_image`; `details` includes model version         |
+| `embeddings_count_text`          | Same as `screens_embedded_text`; `details` includes model version          |
+| `avg_vector_dims_image`          | Mean vector dimensionality for image embeddings (should be 512)            |
+| `avg_vector_dims_text`           | Mean vector dimensionality for text embeddings (should be 384)             |
+| `pct_zero_norm_vectors_image`    | Fraction of image vectors whose norm is zero (silent CLIP failure)         |
+| `pct_zero_norm_vectors_text`     | Fraction of text vectors whose norm is zero (silent SBERT failure)         |
+| `pct_extraction_non_null`        | Fraction of ingested screens that have a non-null `extraction_payload`     |
+| `pct_confidence_gte_0_5`         | Fraction of ingested screens whose LLM confidence is ≥ 0.5                |
+| `pct_in_review_queue`            | Fraction of ingested screens that were routed to `screens_review_queue`    |
+| `distinct_app_packages`          | Number of distinct `app_package` values in the current batch               |
+| `distinct_categories`            | Number of distinct `category` values in the current batch                  |
+| `recall_at_5`                    | recall@5 from the eval task (higher is better; baseline ~1.0 on 5 screens) |
 
-A healthy run should show `metadata_completeness ≥ 0.9`, `zero_vectors_* = 0`, and `screens_review_queue` near zero.
+A healthy run should show `pct_extraction_non_null ≥ 0.9`, `pct_zero_norm_vectors_* = 0`, and `pct_in_review_queue` near zero.
 
 ## Interpreting audit failures
 
-The `audit` task is a circuit breaker: if it detects data quality problems it writes a failure row to `audit_results`, sets the pipeline run status to `paused-by-audit`, and halts the DAG before `eval` runs.
+The `audit` task is a circuit breaker: if it detects data quality problems it writes a failure row to `audit_results`, sets the pipeline run status to `audit-failed`, and halts the DAG before `eval` runs.
 
 Check what failed:
 
@@ -101,19 +114,19 @@ FROM audit_results
 WHERE run_id = '<your-run-id>';
 ```
 
-| `audit_name`                  | What it checks                                                    | What to do when it fails |
-|-------------------------------|-------------------------------------------------------------------|--------------------------|
-| `no_duplicate_embeddings`     | No duplicate `(screen_id, model_name, model_version, embedding_kind)` in `screens_embeddings` | Run `make reset` and re-trigger, or inspect `details` for the duplicate keys and delete them manually |
-| `no_duplicate_metadata`       | No duplicate `screen_id` in `screens_metadata` for the current run | Same as above — usually caused by re-triggering without resetting |
+The audit runs one check (`audit_name = duplicate_check`) that covers both tables:
 
-The `details` JSONB column contains the offending keys, e.g.:
+| What it checks | Failure condition |
+|---|---|
+| No duplicate `screen_id` in `screens_metadata` for the current run | Same screen ingested more than once |
+| No duplicate `(screen_id, model_name, model_version, embedding_kind)` in `screens_embeddings` | Same embedding written more than once |
+
+The `details` JSONB column contains the offending rows for both checks, e.g.:
 
 ```json
 {
-  "duplicate_count": 3,
-  "example_keys": [
-    {"screen_id": 12345, "model_name": "ViT-B-32", "embedding_kind": "image"}
-  ]
+  "duplicate_metadata": [{"screen_id": 12345, "count": 2}],
+  "duplicate_embeddings": [{"screen_id": 12345, "model_name": "open-clip", "model_version": "open-clip-ViT-B-32-laion2b-s34b-b79k", "embedding_kind": "image", "count": 2}]
 }
 ```
 
