@@ -21,7 +21,7 @@ import psycopg
 
 from rico import config
 from rico.notifications import notify_run_finished, notify_run_started
-
+from rico.observability import log_run_summary, record_metric
 log = logging.getLogger(__name__)
 
 # Statuses that should not be overwritten by the generic failure callback.
@@ -152,8 +152,13 @@ def on_dag_success(context) -> None:
         finish_run(run_id, "succeeded")
         status, duration_sec = _get_run_finish_info(run_id)
 
-        # issue #7 can later replace it
-        notify_run_finished(run_id, status, duration_sec, "pipeline completed")
+        if duration_sec is not None:
+            record_metric(run_id, "run_duration_seconds", duration_sec)
+
+        record_metric(run_id, "final_status", 1.0, {"status": status})
+
+        summary = log_run_summary(run_id)
+        notify_run_finished(run_id, status, duration_sec, summary)
 
 
 def on_dag_failure(context) -> None:
@@ -179,6 +184,12 @@ def on_dag_failure(context) -> None:
 
     status, duration_sec = _get_run_finish_info(run_id)
 
+    if duration_sec is not None:
+        record_metric(run_id, "run_duration_seconds", duration_sec)
+
+    status_value = 0.0 if status == "failed" else 0.5
+    record_metric(run_id, "final_status", status_value, {"status": status})
+
     task_instance = context.get("task_instance")
     failed_task_id = getattr(task_instance, "task_id", "unknown")
 
@@ -187,5 +198,5 @@ def on_dag_failure(context) -> None:
         if status == "paused-by-audit"
         else f"task={failed_task_id}"
     )
-
-    notify_run_finished(run_id, status, duration_sec, summary)
+    run_summary = log_run_summary(run_id)
+    notify_run_finished(run_id, status, duration_sec, f"{summary} | {run_summary}")

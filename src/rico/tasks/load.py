@@ -2,6 +2,7 @@ import json
 import logging
 
 from rico.utils import get_postgres_conn
+from rico.observability import record_metrics
 
 log = logging.getLogger(__name__)
 
@@ -12,11 +13,6 @@ SET extraction_payload = %s::jsonb,
     confidence         = %s,
     updated_at         = NOW()
 WHERE screen_id = %s AND run_id = %s
-"""
-
-_INSERT_METRIC = """
-INSERT INTO pipeline_metrics (run_id, metric_name, metric_value, details)
-VALUES (%s, %s, %s, %s)
 """
 
 
@@ -89,30 +85,39 @@ def load_task(**context) -> None:
         )
         emb_rows = cur.fetchall()
 
-        meta_metrics = [
-            ("screens_ingested",        float(total),                None),
-            ("extraction_completeness", _pct(has_payload, total),    None),
-            ("confidence_gte_0_5_pct",  _pct(high_conf, total),     None),
-            ("review_queue_pct",        _pct(review_count, total),   None),
-            ("distinct_apps",           float(distinct_apps),         None),
-            ("distinct_categories",     float(distinct_cats),         None),
-        ]
-        for name, value, details in meta_metrics:
-            cur.execute(_INSERT_METRIC, (run_id, name, value, details))
 
-        emb_summary = []
-        for model_version, kind, n, avg_dim, zero_vecs in emb_rows:
-            zero_pct = _pct(zero_vecs, n)
-            slug = kind  # 'image' or 'text'
-            details = json.dumps({"model_version": model_version})
-            cur.execute(_INSERT_METRIC, (run_id, f"embeddings_count_{slug}", float(n),       details))
-            cur.execute(_INSERT_METRIC, (run_id, f"avg_vector_dim_{slug}",   float(avg_dim), details))
-            cur.execute(_INSERT_METRIC, (run_id, f"zero_vector_pct_{slug}",  zero_pct,       details))
-            emb_summary.append(
-                f"{kind}({model_version}): n={n} dim={avg_dim} zero={zero_pct:.1%}"
-            )
+    metrics = [
+        ("screens_ingested", float(total), None),
+        ("screens_extracted", float(has_payload), None),
+        ("pct_extraction_non_null", _pct(has_payload, total), None),
+        ("pct_confidence_gte_0_5", _pct(high_conf, total), None),
+        ("pct_in_review_queue", _pct(review_count, total), None),
+        ("distinct_app_packages", float(distinct_apps), None),
+        ("distinct_categories", float(distinct_cats), None),
+        ("load_rows_in", float(len(extraction_results)), None),
+        ("load_rows_out", float(has_payload), None),
+    ]
 
-        conn.commit()
+    emb_summary = []
+    for model_version, kind, n, avg_dim, zero_vecs in emb_rows:
+        zero_vecs = zero_vecs or 0
+        zero_pct = _pct(zero_vecs, n)
+        details = {"model_version": model_version, "embedding_kind": kind}
+
+        if kind == "image":
+            metrics.append(("screens_embedded_image", float(n), details))
+        elif kind == "text":
+            metrics.append(("screens_embedded_text", float(n), details))
+
+        metrics.append((f"embeddings_count_{kind}", float(n), details))
+        metrics.append((f"avg_vector_dims_{kind}", float(avg_dim or 0), details))
+        metrics.append((f"pct_zero_norm_vectors_{kind}", zero_pct, details))
+
+        emb_summary.append(
+            f"{kind}({model_version}): n={n} dim={avg_dim} zero={zero_pct:.1%}"
+        )
+
+    record_metrics(run_id, metrics)
 
     log.info(
         "[%s] LOAD SUMMARY | "
